@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RAG Legal Demo — Day 7</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f4f6fb;
+    --surface: #ffffff;
+    --surface2: #f0f2f8;
+    --border: #d8dce8;
+    --accent: #4f5fe8;
+    --accent2: #3b4dd6;
+    --green: #16a34a;
+    --red: #dc2626;
+    --yellow: #d97706;
+    --text: #1e2130;
+    --text2: #4b5268;
+    --text3: #8b93b0;
+    --radius: 10px;
+    --font: 'Inter', system-ui, sans-serif;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--font); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Header ── */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+  header .badge { background: var(--accent); color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); margin-left: auto; transition: background .3s; }
+  .status-dot.ok { background: var(--green); }
+  #status-label { font-size: 12px; color: var(--text2); }
+
+  /* ── Layout ── */
+  .layout { display: grid; grid-template-columns: 280px 1fr 340px; flex: 1; overflow: hidden; gap: 0; }
+
+  /* ── Panels ── */
+  .panel { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+  .panel:last-child { border-right: none; }
+  .panel-header { padding: 12px 16px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--text3); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .panel-body { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── Upload zone ── */
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; color: var(--text3); font-size: 13px; }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(91,110,245,.06); color: var(--text2); }
+  .upload-zone input { display: none; }
+  .upload-zone .icon { font-size: 28px; margin-bottom: 6px; }
+
+  /* ── File list ── */
+  .file-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: border-color .2s; font-size: 13px; }
+  .file-item:hover { border-color: var(--accent2); }
+  .file-item.active { border-color: var(--accent); background: rgba(91,110,245,.1); }
+  .file-item .fname { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-item .fsize { color: var(--text3); font-size: 11px; flex-shrink: 0; }
+
+  /* ── Strategy selector ── */
+  .section-title { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; }
+  .strategy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .strategy-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; text-align: center; cursor: pointer; transition: all .2s; font-size: 12px; color: var(--text2); }
+  .strategy-btn:hover { border-color: var(--accent2); color: var(--text); }
+  .strategy-btn.active { border-color: var(--accent); background: rgba(91,110,245,.15); color: var(--accent2); font-weight: 600; }
+  .strategy-btn .sname { font-weight: 600; display: block; font-size: 12px; }
+  .strategy-btn .sdesc { font-size: 10px; color: var(--text3); margin-top: 2px; display: block; }
+
+  /* ── Chunk size ── */
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  .slider-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .slider-val { font-size: 12px; color: var(--accent2); font-weight: 600; min-width: 32px; text-align: right; }
+
+  /* ── Apply btn ── */
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .2s; width: 100%; }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+
+  /* ── Stats bar ── */
+  .stats-bar { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; gap: 16px; font-size: 12px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .val { font-weight: 700; color: var(--accent2); font-size: 14px; }
+  .stat .lbl { color: var(--text3); font-size: 10px; text-transform: uppercase; }
+
+  /* ── Chat ── */
+  .chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.bot { align-self: flex-start; }
+  .msg .bubble { padding: 11px 15px; border-radius: 14px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.bot .bubble { background: var(--surface2); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg .meta { font-size: 11px; color: var(--text3); }
+
+  /* ── Sources ── */
+  .sources { display: flex; flex-direction: column; gap: 4px; max-width: 88%; }
+  .source-chip { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 11px; color: var(--text2); cursor: pointer; transition: border-color .2s; }
+  .source-chip:hover { border-color: var(--accent2); }
+  .source-chip .score { color: var(--accent2); font-weight: 600; }
+
+  /* ── Chat input ── */
+  .chat-input-row { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; flex-shrink: 0; }
+  .chat-input-row textarea { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 14px; resize: none; height: 44px; font-family: var(--font); outline: none; transition: border-color .2s; }
+  .chat-input-row textarea:focus { border-color: var(--accent); }
+  .send-btn { background: var(--accent); border: none; border-radius: 8px; width: 44px; height: 44px; cursor: pointer; color: #fff; font-size: 18px; flex-shrink: 0; transition: opacity .2s; display: flex; align-items: center; justify-content: center; }
+  .send-btn:hover { opacity: .85; }
+  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── Right panel preview ── */
+  .preview-toolbar { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; flex-shrink: 0; background: var(--surface); }
+  .preview-toolbar select { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12px; outline: none; }
+  .preview-toolbar .pstat { font-size: 11px; color: var(--text3); margin-left: auto; }
+
+  .chunk-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .chunk-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: border-color .2s; }
+  .chunk-card:hover { border-color: var(--accent2); }
+  .chunk-card.highlighted { border-color: var(--yellow); background: rgba(245,158,11,.07); }
+  .chunk-card .chunk-meta { font-size: 10px; color: var(--text3); margin-bottom: 5px; display: flex; gap: 10px; }
+  .chunk-card .chunk-text { font-size: 12px; color: var(--text2); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .chunk-card .chunk-text.collapsed { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; color: var(--text3); font-size: 13px; padding: 40px 20px; }
+  .empty .eicon { font-size: 36px; margin-bottom: 8px; }
+
+  /* ── Spinner ── */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(79,95,232,.3); border-top-color: var(--accent); border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 13px; color: var(--text); opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 999; max-width: 320px; }
+  #toast.show { opacity: 1; }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error { border-color: var(--red); color: var(--red); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:18px">⚖️</span>
+  <h1>RAG Legal Demo</h1>
+  <span class="badge">Day 7</span>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+    <span id="status-label">Chưa load file</span>
+    <div class="status-dot" id="status-dot"></div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ══ LEFT PANEL ══ -->
+  <div class="panel">
+    <div class="panel-header">📂 Tài liệu & Cài đặt</div>
+    <div class="panel-body">
+
+      <!-- Upload -->
+      <div class="section-title">Upload file (.md / .txt)</div>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="handleDrop(event)">
+        <input type="file" id="file-input" multiple accept=".md,.txt" onchange="handleFiles(this.files)" />
+        <div class="icon">📄</div>
+        <div>Kéo thả hoặc click để chọn file</div>
+        <div style="font-size:11px;margin-top:4px">Hỗ trợ .md và .txt</div>
+      </div>
+
+      <!-- File list -->
+      <div id="file-list"></div>
+
+      <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+
+      <!-- Strategy -->
+      <div class="section-title">Chunking Strategy</div>
+      <div class="strategy-grid">
+        <div class="strategy-btn active" data-s="legal_article" onclick="selectStrategy(this)">
+          <span class="sname">⚖️ Legal</span>
+          <span class="sdesc">Chương → Điều</span>
+        </div>
+        <div class="strategy-btn" data-s="recursive" onclick="selectStrategy(this)">
+          <span class="sname">🔁 Recursive</span>
+          <span class="sdesc">Separator DFS</span>
+        </div>
+        <div class="strategy-btn" data-s="sentence" onclick="selectStrategy(this)">
+          <span class="sname">📝 Sentence</span>
+          <span class="sdesc">Theo câu</span>
+        </div>
+        <div class="strategy-btn" data-s="fixed_size" onclick="selectStrategy(this)">
+          <span class="sname">📏 Fixed</span>
+          <span class="sdesc">Cố định size</span>
+        </div>
+      </div>
+
+      <!-- Chunk size -->
+      <div class="section-title" style="margin-top:4px">Chunk size</div>
+      <div class="slider-row">
+        <input type="range" id="chunk-size" min="200" max="1500" step="50" value="500"
+               oninput="document.getElementById('cs-val').textContent=this.value" />
+        <span class="slider-val" id="cs-val">500</span>
+      </div>
+
+      <!-- Apply -->
+      <button class="btn" id="apply-btn" onclick="applySettings()" disabled>
+        ⚡ Áp dụng & Rebuild Store
+      </button>
+
+      <!-- Stats -->
+      <div class="stats-bar" id="stats-bar" style="display:none">
+        <div class="stat"><span class="val" id="stat-files">0</span><span class="lbl">Files</span></div>
+        <div class="stat"><span class="val" id="stat-chunks">0</span><span class="lbl">Chunks</span></div>
+        <div class="stat"><span class="val" id="stat-strategy">—</span><span class="lbl">Strategy</span></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ CENTER PANEL — Chat ══ -->
+  <div class="panel" style="border-right:1px solid var(--border)">
+    <div class="panel-header">💬 Chat với Knowledge Base</div>
+
+    <div class="chat-messages" id="chat-messages">
+      <div class="empty">
+        <div class="eicon">🤖</div>
+        <div>Upload file và chọn strategy để bắt đầu</div>
+      </div>
+    </div>
+
+    <div class="chat-input-row">
+      <textarea id="chat-input" placeholder="Hỏi về nội dung văn bản pháp luật..." rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"
+        oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()" disabled>
+        <span>➤</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT PANEL — Preview ══ -->
+  <div class="panel">
+    <div class="panel-header">🔍 Chunk Preview</div>
+    <div class="preview-toolbar">
+      <select id="preview-file" onchange="loadPreview()" style="flex:1;max-width:160px">
+        <option value="">— Chọn file —</option>
+      </select>
+      <select id="preview-strategy" onchange="loadPreview()">
+        <option value="legal_article">⚖️ Legal</option>
+        <option value="recursive">🔁 Recursive</option>
+        <option value="sentence">📝 Sentence</option>
+        <option value="fixed_size">📏 Fixed</option>
+      </select>
+      <span class="pstat" id="preview-stat"></span>
+    </div>
+    <div class="chunk-list" id="chunk-list">
+      <div class="empty"><div class="eicon">📋</div><div>Chọn file để xem chunks</div></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let files = {};          // filename → content (local)
+let currentStrategy = 'legal_article';
+let storeReady = false;
+let highlightedChunks = new Set();
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.className = '', 3000);
+}
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+}
+
+function handleFiles(fileList) {
+  const allowed = ['.md', '.txt'];
+  let count = 0;
+  Array.from(fileList).forEach(f => {
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+    if (!allowed.includes(ext)) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      files[f.name] = e.target.result;
+      count++;
+      renderFileList();
+      updatePreviewFileSelect();
+      document.getElementById('apply-btn').disabled = false;
+    };
+    reader.readAsText(f, 'utf-8');
+  });
+}
+
+function renderFileList() {
+  const el = document.getElementById('file-list');
+  if (!Object.keys(files).length) { el.innerHTML = ''; return; }
+  el.innerHTML = Object.keys(files).map(name => {
+    const size = files[name].length;
+    return `<div class="file-item" onclick="selectPreviewFile('${name}')" title="${name}">
+      <span style="font-size:14px">📄</span>
+      <span class="fname">${name}</span>
+      <span class="fsize">${(size/1000).toFixed(1)}k</span>
+    </div>`;
+  }).join('');
+}
+
+function selectPreviewFile(name) {
+  document.getElementById('preview-file').value = name;
+  loadPreview();
+}
+
+// ── Strategy ───────────────────────────────────────────────────────────────
+function selectStrategy(el) {
+  document.querySelectorAll('.strategy-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentStrategy = el.dataset.s;
+}
+
+// ── Apply / Rebuild ────────────────────────────────────────────────────────
+async function applySettings() {
+  if (!Object.keys(files).length) { toast('Upload file trước!', 'error'); return; }
+  const btn = document.getElementById('apply-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Đang build...';
+
+  const formData = new FormData();
+  for (const [name, content] of Object.entries(files)) {
+    formData.append('files', new Blob([content], {type:'text/plain'}), name);
+  }
+  formData.append('strategy', currentStrategy);
+  formData.append('chunk_size', document.getElementById('chunk-size').value);
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    storeReady = true;
+    document.getElementById('send-btn').disabled = false;
+    document.getElementById('status-dot').className = 'status-dot ok';
+    document.getElementById('status-label').textContent = `${data.total_chunks} chunks ready`;
+    showStats(data.files.length, data.total_chunks);
+    toast(`✅ Build xong — ${data.total_chunks} chunks`, 'success');
+    // auto preview first file
+    if (!document.getElementById('preview-file').value && data.files.length)
+      document.getElementById('preview-file').value = data.files[0];
+    loadPreview();
+  } catch(e) {
+    toast('❌ ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '⚡ Áp dụng & Rebuild Store';
+  }
+}
+
+function showStats(nFiles, nChunks) {
+  const bar = document.getElementById('stats-bar');
+  bar.style.display = 'flex';
+  document.getElementById('stat-files').textContent = nFiles;
+  document.getElementById('stat-chunks').textContent = nChunks;
+  const labels = {legal_article:'Legal',recursive:'Recursive',sentence:'Sentence',fixed_size:'Fixed'};
+  document.getElementById('stat-strategy').textContent = labels[currentStrategy] || currentStrategy;
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const q = input.value.trim();
+  if (!q || !storeReady) return;
+
+  input.value = ''; input.style.height = '44px';
+  appendMsg('user', q);
+
+  const typingId = appendMsg('bot', '···', true);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ question: q, top_k: 3 }),
+    });
+    const data = await res.json();
+    removeMsg(typingId);
+    if (data.error) { appendMsg('bot', '❌ ' + data.error); return; }
+
+    appendMsg('bot', data.answer);
+    appendSources(data.sources);
+
+    // highlight chunks in preview
+    highlightedChunks = new Set(data.sources.map(s => `${s.doc_id}__${s.chunk_index}`));
+    highlightPreviewChunks();
+  } catch(e) {
+    removeMsg(typingId);
+    appendMsg('bot', '❌ Lỗi kết nối server');
+  }
+}
+
+function appendMsg(role, text, typing = false) {
+  const id = 'msg-' + Date.now() + Math.random();
+  const container = document.getElementById('chat-messages');
+  // remove empty state
+  const empty = container.querySelector('.empty');
+  if (empty) empty.remove();
+
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.id = id;
+  div.innerHTML = `<div class="bubble">${typing ? '<span class="spinner"></span>' : escHtml(text)}</div>
+    <span class="meta">${role === 'user' ? 'Bạn' : '🤖 Agent'} · ${new Date().toLocaleTimeString('vi')}</span>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return id;
+}
+
+function appendSources(sources) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'sources';
+  div.innerHTML = sources.map(s =>
+    `<div class="source-chip" onclick="jumpToChunk('${s.doc_id}', ${s.chunk_index})">
+      📄 ${s.doc_id} · chunk #${s.chunk_index} · <span class="score">${s.score}</span>
+    </div>`
+  ).join('');
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function removeMsg(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+// ── Preview ────────────────────────────────────────────────────────────────
+let previewCache = {};
+let expandedChunks = new Set();
+
+function updatePreviewFileSelect() {
+  const sel = document.getElementById('preview-file');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Chọn file —</option>' +
+    Object.keys(files).map(n => `<option value="${n}"${n===cur?' selected':''}>${n}</option>`).join('');
+}
+
+async function loadPreview() {
+  const filename = document.getElementById('preview-file').value;
+  const strategy = document.getElementById('preview-strategy').value;
+  const chunkSize = parseInt(document.getElementById('chunk-size').value);
+  if (!filename) return;
+
+  const cacheKey = `${filename}|${strategy}|${chunkSize}`;
+  if (previewCache[cacheKey]) { renderChunks(previewCache[cacheKey]); return; }
+
+  document.getElementById('chunk-list').innerHTML =
+    '<div class="empty"><span class="spinner"></span> Loading...</div>';
+
+  try {
+    const res = await fetch('/api/preview', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ filename, strategy, chunk_size: chunkSize }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    previewCache[cacheKey] = data;
+    renderChunks(data);
+  } catch(e) {
+    document.getElementById('chunk-list').innerHTML =
+      `<div class="empty" style="color:var(--red)">❌ ${e.message}</div>`;
+  }
+}
+
+function renderChunks(data) {
+  const docId = data.filename.replace(/\.(md|txt)$/,'');
+  document.getElementById('preview-stat').textContent =
+    `${data.count} chunks · avg ${data.avg_length} chars`;
+
+  const list = document.getElementById('chunk-list');
+  list.innerHTML = data.chunks.map(c => {
+    const id = `${docId}__${c.index}`;
+    const isHL = highlightedChunks.has(id);
+    const isExp = expandedChunks.has(id);
+    return `<div class="chunk-card${isHL?' highlighted':''}" id="card-${id}">
+      <div class="chunk-meta">
+        <span>#${c.index}</span>
+        <span>${c.length} chars</span>
+        ${isHL ? '<span style="color:var(--yellow)">⭐ retrieved</span>' : ''}
+      </div>
+      <div class="chunk-text${isExp?'':' collapsed'}" id="text-${id}">${escHtml(c.text)}</div>
+      <div style="text-align:right;margin-top:4px">
+        <span style="font-size:11px;color:var(--accent2);cursor:pointer"
+          onclick="toggleExpand('${id}')">
+          ${isExp ? '▲ Thu gọn' : '▼ Xem thêm'}
+        </span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleExpand(id) {
+  const textEl = document.getElementById('text-' + id);
+  if (expandedChunks.has(id)) {
+    expandedChunks.delete(id);
+    textEl.classList.add('collapsed');
+  } else {
+    expandedChunks.add(id);
+    textEl.classList.remove('collapsed');
+  }
+  // re-render toggle label without full re-render
+  const card = document.getElementById('card-' + id);
+  const toggle = card.querySelector('span[onclick]');
+  toggle.textContent = expandedChunks.has(id) ? '▲ Thu gọn' : '▼ Xem thêm';
+}
+
+function highlightPreviewChunks() {
+  document.querySelectorAll('.chunk-card').forEach(c => c.classList.remove('highlighted'));
+  highlightedChunks.forEach(id => {
+    const card = document.getElementById('card-' + id);
+    if (card) {
+      card.classList.add('highlighted');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+}
+
+function jumpToChunk(docId, chunkIndex) {
+  // switch preview to that file+strategy then highlight
+  const filename = Object.keys(files).find(f => f.replace(/\.(md|txt)$/,'') === docId);
+  if (filename) {
+    document.getElementById('preview-file').value = filename;
+    document.getElementById('preview-strategy').value = currentStrategy;
+  }
+  highlightedChunks = new Set([`${docId}__${chunkIndex}`]);
+  loadPreview().then ? loadPreview().then(highlightPreviewChunks) : setTimeout(highlightPreviewChunks, 500);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.getElementById('preview-strategy').value = 'legal_article';
+</script>
+</body>
+</html>

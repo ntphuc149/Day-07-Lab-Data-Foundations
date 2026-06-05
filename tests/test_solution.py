@@ -3,7 +3,7 @@ Day 7 — Data Foundations: Embedding & Vector Store
 Test suite for student solution.
 
 Run from the day folder:
-    pytest tests/ -v
+    các TODO trong code
 
 No real API keys required — uses mock embeddings.
 """

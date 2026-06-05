@@ -130,6 +130,134 @@ def compute_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     return _dot(vec_a, vec_b) / (mag_a * mag_b)
 
 
+class LegalArticleChunker:
+    """
+    DFS chunker cho văn bản pháp luật Việt Nam theo cấu trúc Chương → Điều.
+
+    Cấp 1 — tách theo Chương: bắt "**Chương X**" + tên chương ở dòng tiếp theo.
+    Cấp 2 — trong mỗi Chương, tách theo Điều: "**Điều N. Tên điều**".
+    Mỗi chunk được prefix "Chương X — Tên | Điều Y. Tên" để giữ đủ context.
+    Fallback — nếu 1 Điều vẫn > chunk_size, dùng RecursiveChunker.
+    """
+
+    # Bắt: **Chương X** + toàn bộ dòng tên chương (có thể nhiều dòng **...**)
+    # Dừng khi gặp **Điều hoặc hết block **...**
+    _CHUONG = re.compile(
+        r'(\*\*Chương\s+\S+\*\*(?:\n\n\*\*(?!Điều)[^*]+\*\*)+)',
+        re.UNICODE,
+    )
+    # Bắt: **Điều N. Tên điều**
+    _DIEU = re.compile(r'(\*\*Điều\s+\d+\.[^*]+\*\*)', re.UNICODE)
+
+    def __init__(self, chunk_size: int = 500) -> None:
+        self.chunk_size = chunk_size
+        self._fallback = RecursiveChunker(chunk_size=chunk_size)
+
+    def chunk(self, text: str) -> list[str]:
+        if not text:
+            return []
+
+        parts = self._CHUONG.split(text)
+        result: list[str] = []
+        current_chuong = ""
+
+        for part in parts:
+            if self._CHUONG.fullmatch(part.strip()):
+                current_chuong = part.strip()
+            else:
+                result.extend(self._split_chuong(current_chuong, part))
+
+        return [c for c in result if c.strip()]
+
+    def _split_chuong(self, chuong_header: str, body: str) -> list[str]:
+        # findall trả về list [(dieu_header, content), ...]
+        # Dùng re.split với capturing group: phần tử lẻ là header, chẵn là content
+        tokens = self._DIEU.split(body)
+        result: list[str] = []
+        current_dieu = ""
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            if self._DIEU.fullmatch(token):
+                current_dieu = token
+            else:
+                content = token.strip()
+                if content:
+                    prefix_parts = []
+                    if chuong_header:
+                        prefix_parts.append(chuong_header)
+                    if current_dieu:
+                        prefix_parts.append(current_dieu)
+                    prefix = "\n".join(prefix_parts)
+                    chunk = (prefix + "\n\n" + content) if prefix else content
+                    result.extend(self._split_if_needed(chunk))
+            i += 1
+
+        return result
+
+    def _split_if_needed(self, chunk: str) -> list[str]:
+        if len(chunk) <= self.chunk_size:
+            return [chunk]
+        # Giữ 2 dòng header (Chương + Điều) làm prefix cho mỗi fallback chunk
+        lines = chunk.splitlines()
+        header_lines = [l for l in lines[:4] if l.startswith("**")]
+        prefix = "\n".join(header_lines)
+        body_start = chunk.find("\n\n", len(prefix))
+        body = chunk[body_start:].strip() if body_start != -1 else chunk
+        sub_chunks = self._fallback.chunk(body)
+        return [(prefix + "\n\n" + s) if prefix else s for s in sub_chunks if s.strip()]
+
+
+class LegalChunker:
+    """
+    Custom chunker for legal texts (Vietnamese) — by Trần Minh Anh.
+
+    Strategy:
+      - First split by 'Điều <number>' headings.
+      - If a 'Điều' section is still too long, split by 'Khoản' or numbered subclauses.
+      - Fallback: fixed-size slicing.
+    """
+
+    def __init__(self, chunk_size: int = 1200) -> None:
+        self.chunk_size = max(100, int(chunk_size))
+
+    def chunk(self, text: str) -> list[str]:
+        if not text:
+            return []
+        text = text.strip()
+        parts = re.split(r'(?m)(?:(?<=\n\n)|^)(?=Điều\s*\d+\b)', text)
+        if len(parts) <= 1:
+            parts = re.split(r'(?m)(?:(?<=\n\n)|^)(?=\d+\.)', text)
+        chunks: list[str] = []
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if len(part) <= self.chunk_size:
+                chunks.append(part)
+                continue
+            subparts = re.split(r'(?m)(?=^\s*(?:Khoản\b|\d+\.)\s*)', part)
+            if len(subparts) > 1:
+                for sub in subparts:
+                    sub = sub.strip()
+                    if not sub:
+                        continue
+                    if len(sub) <= self.chunk_size:
+                        chunks.append(sub)
+                    else:
+                        for i in range(0, len(sub), self.chunk_size):
+                            piece = sub[i : i + self.chunk_size].strip()
+                            if piece:
+                                chunks.append(piece)
+            else:
+                for i in range(0, len(part), self.chunk_size):
+                    piece = part[i : i + self.chunk_size].strip()
+                    if piece:
+                        chunks.append(piece)
+        return chunks
+
+
 class ChunkingStrategyComparator:
     """Run all built-in chunking strategies and compare their results."""
 
